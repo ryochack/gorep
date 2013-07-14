@@ -1,11 +1,11 @@
-# golookup
+# gorep
 
 ## WHATS
 find and grep tool
 
 ## Usage
 ```
-$ golookup [-r] [-f] [-g] PATTERN PATH
+$ gorep [-r] [-f] [-g] PATTERN PATH
 
 -r : enable recursive search.
 -f : enable file and directory search.

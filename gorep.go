@@ -27,7 +27,7 @@ type report struct {
 	line     string
 }
 
-type lookup struct {
+type gorep struct {
 	bRecursive bool
 	bFind      bool
 	bGrep      bool
@@ -59,13 +59,13 @@ func main() {
 	fmt.Printf("pattern:%s path:%s -r:%v -f:%v -g:%v\n", pattern, fpath,
 		*requireRecursive, *requireFile, *requireGrep)
 
-	/* create lookup */
+	/* create gorep */
 	c := New(*requireRecursive, *requireFile, *requireGrep, pattern)
 
 	/* make notify channel */
 	chNotify := make(chan report)
 
-	/* start lookup */
+	/* start gorep */
 	go c.kick(fpath, chNotify)
 
 	showReport(chNotify)
@@ -87,16 +87,16 @@ func showReport(chNotify <-chan report) {
 	}
 }
 
-func New(requireRecursive, requireFile, requireGrep bool, pattern string) *lookup {
+func New(requireRecursive, requireFile, requireGrep bool, pattern string) *gorep {
 	compiledPattern, err := regexp.Compile(pattern)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	return &lookup{requireRecursive, requireFile, requireGrep, compiledPattern}
+	return &gorep{requireRecursive, requireFile, requireGrep, compiledPattern}
 }
 
-func (this lookup) kick(fpath string, chNotify chan<- report) {
+func (this gorep) kick(fpath string, chNotify chan<- report) {
 	/* make child channel */
 	chRelay := make(chan report, 10)
 	nRoutines := 0
@@ -140,7 +140,7 @@ func (this lookup) kick(fpath string, chNotify chan<- report) {
 	close(chNotify)
 }
 
-func (this lookup) dive(dir string, chRelay chan<- report) {
+func (this gorep) dive(dir string, chRelay chan<- report) {
 	defer func() {
 		chRelay <- report{true, FMODE_DIR, "", ""}
 	}()
@@ -163,7 +163,7 @@ func (this lookup) dive(dir string, chRelay chan<- report) {
 	}
 }
 
-func (this lookup) grep(fpath string, chRelay chan<- report) {
+func (this gorep) grep(fpath string, chRelay chan<- report) {
 	defer func() {
 		chRelay <- report{true, FMODE_LINE, "", ""}
 	}()
