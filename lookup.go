@@ -21,7 +21,7 @@ const (
 type report struct {
 	complete bool
 	fmode    fileMode
-	path     string
+	fpath    string
 	line     string
 }
 
@@ -52,9 +52,9 @@ func main() {
 	}
 
 	pattern := flag.Arg(0)
-	path    := flag.Arg(1)
+	fpath   := flag.Arg(1)
 
-	fmt.Printf("pattern:%s path:%s\n", pattern, path)
+	fmt.Printf("pattern:%s path:%s\n", pattern, fpath)
 
 	/* create lookup */
 	c := New(*requireRecursive, *requireFile, *requireGrep, pattern)
@@ -63,7 +63,7 @@ func main() {
 	chNotify := make(chan report)
 
 	/* start lookup */
-	go c.kick(path, chNotify)
+	go c.kick(fpath, chNotify)
 
 	showReport(chNotify)
 }
@@ -73,11 +73,11 @@ func showReport(chNotify <-chan report) {
 	for repo, ok := <-chNotify; ok; repo, ok = <-chNotify {
 		switch repo.fmode {
 		case FMODE_DIR:
-			fmt.Println("[Dir ]: ", repo.path)
+			fmt.Println("[Dir ]: ", repo.fpath)
 		case FMODE_FILE:
-			fmt.Println("[File]: ", repo.path)
+			fmt.Println("[File]: ", repo.fpath)
 		case FMODE_LINE:
-			fmt.Println("[Grep]: ", repo.path, ": ", repo.line)
+			fmt.Println("[Grep]: ", repo.fpath, ": ", repo.line)
 		default:
 			fmt.Fprintf(os.Stderr, "Illegal filemode (%d)\n", repo.fmode)
 		}
@@ -93,13 +93,13 @@ func New(requireRecursive, requireFile, requireGrep bool, pattern string) *looku
 	return &lookup{requireRecursive, requireFile, requireGrep, compiledPattern}
 }
 
-func (this lookup) kick(path string, chNotify chan<- report) {
+func (this lookup) kick(fpath string, chNotify chan<- report) {
 	/* make child channel */
 	chRelay := make(chan report, 10)
 	nRoutines := 0
 
 	nRoutines++
-	go this.dive(path, chRelay)
+	go this.dive(fpath, chRelay)
 
 	for nRoutines > 0 {
 		relayRepo := <-chRelay
@@ -111,20 +111,20 @@ func (this lookup) kick(path string, chNotify chan<- report) {
 
 		switch relayRepo.fmode {
 		case FMODE_DIR:
-			if this.pattern.MatchString(relayRepo.path) {
+			if this.pattern.MatchString(path.Base(relayRepo.fpath)) {
 				chNotify <-relayRepo
 			}
 			if (this.bRecursive) {
 				nRoutines++
-				go this.dive(relayRepo.path, chRelay)
+				go this.dive(relayRepo.fpath, chRelay)
 			}
 		case FMODE_FILE:
-			if this.pattern.MatchString(relayRepo.path) {
+			if this.pattern.MatchString(path.Base(relayRepo.fpath)) {
 				chNotify <-relayRepo
 			}
 			if (this.bGrep) {
 				nRoutines++
-				go this.grep(relayRepo.path, chRelay)
+				go this.grep(relayRepo.fpath, chRelay)
 			}
 		case FMODE_LINE:
 			chNotify <-relayRepo
