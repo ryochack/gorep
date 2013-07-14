@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -29,7 +30,7 @@ type lookup struct {
 	bRecursive bool
 	bFind      bool
 	bGrep      bool
-	pattern         *regexp.Regexp
+	pattern    *regexp.Regexp
 }
 
 func usage(progName string) {
@@ -70,14 +71,14 @@ func main() {
 
 func showReport(chNotify <-chan report) {
 	/* receive notify */
-	for repo, ok := <-chNotify; ok; repo, ok = <-chNotify {
+	for repo, ok := <- chNotify; ok; repo, ok = <- chNotify {
 		switch repo.fmode {
 		case FMODE_DIR:
-			fmt.Println("[Dir ]: ", repo.fpath)
+			fmt.Printf("[Dir ] %s\n", repo.fpath)
 		case FMODE_FILE:
-			fmt.Println("[File]: ", repo.fpath)
+			fmt.Printf("[File] %s\n", repo.fpath)
 		case FMODE_LINE:
-			fmt.Println("[Grep]: ", repo.fpath, ": ", repo.line)
+			fmt.Printf("[Grep] %s:%s\n", repo.fpath, repo.line)
 		default:
 			fmt.Fprintf(os.Stderr, "Illegal filemode (%d)\n", repo.fmode)
 		}
@@ -102,7 +103,7 @@ func (this lookup) kick(fpath string, chNotify chan<- report) {
 	go this.dive(fpath, chRelay)
 
 	for nRoutines > 0 {
-		relayRepo := <-chRelay
+		relayRepo := <- chRelay
 
 		if relayRepo.complete {
 			nRoutines--
@@ -112,7 +113,7 @@ func (this lookup) kick(fpath string, chNotify chan<- report) {
 		switch relayRepo.fmode {
 		case FMODE_DIR:
 			if this.pattern.MatchString(path.Base(relayRepo.fpath)) {
-				chNotify <-relayRepo
+				chNotify <- relayRepo
 			}
 			if (this.bRecursive) {
 				nRoutines++
@@ -120,14 +121,14 @@ func (this lookup) kick(fpath string, chNotify chan<- report) {
 			}
 		case FMODE_FILE:
 			if this.pattern.MatchString(path.Base(relayRepo.fpath)) {
-				chNotify <-relayRepo
+				chNotify <- relayRepo
 			}
 			if (this.bGrep) {
 				nRoutines++
 				go this.grep(relayRepo.fpath, chRelay)
 			}
 		case FMODE_LINE:
-			chNotify <-relayRepo
+			chNotify <- relayRepo
 		default:
 			fmt.Fprintf(os.Stderr, "Illegal filemode (%d)\n", relayRepo.fmode)
 		}
@@ -138,6 +139,10 @@ func (this lookup) kick(fpath string, chNotify chan<- report) {
 }
 
 func (this lookup) dive(dir string, chRelay chan<- report) {
+	defer func() {
+		chRelay <- report{true, FMODE_DIR, "", ""}
+	}()
+
 	/* expand dir */
 	list, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -152,13 +157,46 @@ func (this lookup) dive(dir string, chRelay chan<- report) {
 		} else {
 			fmode = FMODE_FILE
 		}
-		chRelay <-report{false, fmode, dir+"/"+finfo.Name(), ""}
+		chRelay <- report{false, fmode, dir+"/"+finfo.Name(), ""}
 	}
-
-	chRelay <-report{true, FMODE_INVALID, "", ""}
 }
 
-func (this lookup) grep(dir string, chRelay chan<- report) {
-	/* T.B.D */
+func (this lookup) grep(fpath string, chRelay chan<- report) {
+	defer func() {
+		chRelay <- report{true, FMODE_LINE, "", ""}
+	}()
+
+	file, err := os.Open(fpath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return
+	}
+	defer file.Close()
+
+	lineNumber := 0
+	lineReader := bufio.NewReader(file)
+
+	for {
+		line, isPrefix, err := lineReader.ReadLine()
+		if err != nil {
+			return
+		}
+		lineNumber++
+		fullLine := string(line)
+		if isPrefix {
+			for {
+				//tailLine, isPrefix, _ := lineReader.ReadLine()
+				//fullLine = fullLine + string(tailLine)
+				//if !isPrefix {
+				//	break
+				//}
+				fullLine = fullLine + "@@"
+			}
+		}
+		if this.pattern.MatchString(fullLine) {
+			formatline := fmt.Sprintf("%d: %s", lineNumber, fullLine)
+			chRelay <- report{false, FMODE_LINE, fpath, formatline}
+		}
+	}
 }
 
