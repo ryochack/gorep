@@ -12,6 +12,7 @@ import (
 )
 
 type fileMode int32
+
 const (
 	FMODE_DIR fileMode = iota
 	FMODE_FILE
@@ -43,19 +44,20 @@ func main() {
 
 	/* parse flag */
 	requireRecursive := flag.Bool("r", true, "enable recursive search.")
-	requireFile      := flag.Bool("f", true, "enable file search.")
-	requireGrep      := flag.Bool("g", false, "enable grep.")
+	requireFile := flag.Bool("f", true, "enable file search.")
+	requireGrep := flag.Bool("g", false, "enable grep.")
 	flag.Parse()
 
-	if (flag.NArg() < 2) {
+	if flag.NArg() < 2 {
 		usage(os.Args[0])
 		os.Exit(0)
 	}
 
 	pattern := flag.Arg(0)
-	fpath   := flag.Arg(1)
+	fpath := flag.Arg(1)
 
-	fmt.Printf("pattern:%s path:%s\n", pattern, fpath)
+	fmt.Printf("pattern:%s path:%s -r:%v -f:%v -g:%v\n", pattern, fpath,
+		*requireRecursive, *requireFile, *requireGrep)
 
 	/* create lookup */
 	c := New(*requireRecursive, *requireFile, *requireGrep, pattern)
@@ -71,7 +73,7 @@ func main() {
 
 func showReport(chNotify <-chan report) {
 	/* receive notify */
-	for repo, ok := <- chNotify; ok; repo, ok = <- chNotify {
+	for repo, ok := <-chNotify; ok; repo, ok = <-chNotify {
 		switch repo.fmode {
 		case FMODE_DIR:
 			fmt.Printf("[Dir ] %s\n", repo.fpath)
@@ -87,10 +89,10 @@ func showReport(chNotify <-chan report) {
 
 func New(requireRecursive, requireFile, requireGrep bool, pattern string) *lookup {
 	compiledPattern, err := regexp.Compile(pattern)
-    if err != nil {
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-        os.Exit(1)
-    }
+		os.Exit(1)
+	}
 	return &lookup{requireRecursive, requireFile, requireGrep, compiledPattern}
 }
 
@@ -103,7 +105,7 @@ func (this lookup) kick(fpath string, chNotify chan<- report) {
 	go this.dive(fpath, chRelay)
 
 	for nRoutines > 0 {
-		relayRepo := <- chRelay
+		relayRepo := <-chRelay
 
 		if relayRepo.complete {
 			nRoutines--
@@ -112,18 +114,18 @@ func (this lookup) kick(fpath string, chNotify chan<- report) {
 
 		switch relayRepo.fmode {
 		case FMODE_DIR:
-			if this.pattern.MatchString(path.Base(relayRepo.fpath)) {
+			if this.bFind && this.pattern.MatchString(path.Base(relayRepo.fpath)) {
 				chNotify <- relayRepo
 			}
-			if (this.bRecursive) {
+			if this.bRecursive {
 				nRoutines++
 				go this.dive(relayRepo.fpath, chRelay)
 			}
 		case FMODE_FILE:
-			if this.pattern.MatchString(path.Base(relayRepo.fpath)) {
+			if this.bFind && this.pattern.MatchString(path.Base(relayRepo.fpath)) {
 				chNotify <- relayRepo
 			}
-			if (this.bGrep) {
+			if this.bGrep {
 				nRoutines++
 				go this.grep(relayRepo.fpath, chRelay)
 			}
@@ -157,7 +159,7 @@ func (this lookup) dive(dir string, chRelay chan<- report) {
 		} else {
 			fmode = FMODE_FILE
 		}
-		chRelay <- report{false, fmode, dir+"/"+finfo.Name(), ""}
+		chRelay <- report{false, fmode, dir + "/" + finfo.Name(), ""}
 	}
 }
 
@@ -184,14 +186,7 @@ func (this lookup) grep(fpath string, chRelay chan<- report) {
 		lineNumber++
 		fullLine := string(line)
 		if isPrefix {
-			for {
-				//tailLine, isPrefix, _ := lineReader.ReadLine()
-				//fullLine = fullLine + string(tailLine)
-				//if !isPrefix {
-				//	break
-				//}
-				fullLine = fullLine + "@@"
-			}
+			fullLine = fullLine + "@@"
 		}
 		if this.pattern.MatchString(fullLine) {
 			formatline := fmt.Sprintf("%d: %s", lineNumber, fullLine)
@@ -199,4 +194,3 @@ func (this lookup) grep(fpath string, chRelay chan<- report) {
 		}
 	}
 }
-
