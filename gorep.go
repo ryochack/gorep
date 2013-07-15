@@ -165,6 +165,17 @@ func (this gorep) dive(dir string, chRelay chan<- report) {
 	}
 }
 
+// Binary check.
+// Character code deesn't include 00
+func isBinary(buf []byte) bool {
+	for _, b := range buf {
+		if b == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (this gorep) grep(fpath string, chRelay chan<- report) {
 	defer func() {
 		chRelay <- report{true, FMODE_LINE, "", ""}
@@ -178,11 +189,14 @@ func (this gorep) grep(fpath string, chRelay chan<- report) {
 	defer file.Close()
 
 	lineNumber := 0
-	lineReader := bufio.NewReader(file)
+	lineReader := bufio.NewReaderSize(file, 256)
 
 	for {
 		line, isPrefix, err := lineReader.ReadLine()
 		if err != nil {
+			return
+		}
+		if isBinary(line) {
 			return
 		}
 		lineNumber++
