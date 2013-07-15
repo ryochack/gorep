@@ -38,6 +38,13 @@ func usage(progName string) {
 	fmt.Printf("%s [-r] [-f] [-g] PATTERN PATH\n", path.Base(progName))
 }
 
+var semaphore chan int
+const maxNumOfFileOpen = 10
+
+func init() {
+	semaphore = make(chan int, maxNumOfFileOpen)
+}
+
 func main() {
 	cpus := runtime.NumCPU()
 	runtime.GOMAXPROCS(cpus)
@@ -176,17 +183,23 @@ func isBinary(buf []byte) bool {
 	return false
 }
 
+
 func (this gorep) grep(fpath string, chRelay chan<- report) {
 	defer func() {
 		chRelay <- report{true, FMODE_LINE, "", ""}
 	}()
+
+	semaphore <- 1
 
 	file, err := os.Open(fpath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return
 	}
-	defer file.Close()
+	defer func() {
+		file.Close()
+		<- semaphore
+	}()
 
 	lineNumber := 0
 	lineReader := bufio.NewReaderSize(file, 256)
