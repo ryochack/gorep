@@ -62,11 +62,8 @@ func main() {
 	/* create gorep */
 	c := New(*requireRecursive, *requireFile, *requireGrep, pattern)
 
-	/* make notify channel */
-	chNotify := make(chan report)
-
-	/* start gorep */
-	go c.kick(fpath, chNotify)
+	/* make notify channel & start gorep */
+	chNotify := c.kick(fpath)
 
 	showReport(chNotify)
 }
@@ -96,7 +93,9 @@ func New(requireRecursive, requireFile, requireGrep bool, pattern string) *gorep
 	return &gorep{requireRecursive, requireFile, requireGrep, compiledPattern}
 }
 
-func (this gorep) kick(fpath string, chNotify chan<- report) {
+func (this gorep) kick(fpath string) <-chan report {
+	chNotify := make(chan report)
+
 	/* make child channel */
 	chRelay := make(chan report, 10)
 	nRoutines := 0
@@ -104,40 +103,43 @@ func (this gorep) kick(fpath string, chNotify chan<- report) {
 	nRoutines++
 	go this.dive(fpath, chRelay)
 
-	for nRoutines > 0 {
-		relayRepo := <-chRelay
+	go func() {
+		for nRoutines > 0 {
+			repo := <-chRelay
 
-		if relayRepo.complete {
-			nRoutines--
-			continue
+			if repo.complete {
+				nRoutines--
+				continue
+			}
+
+			switch repo.fmode {
+			case FMODE_DIR:
+				if this.bFind && this.pattern.MatchString(path.Base(repo.fpath)) {
+					chNotify <- repo
+				}
+				if this.bRecursive {
+					nRoutines++
+					go this.dive(repo.fpath, chRelay)
+				}
+			case FMODE_FILE:
+				if this.bFind && this.pattern.MatchString(path.Base(repo.fpath)) {
+					chNotify <- repo
+				}
+				if this.bGrep {
+					nRoutines++
+					go this.grep(repo.fpath, chRelay)
+				}
+			case FMODE_LINE:
+				chNotify <- repo
+			default:
+				fmt.Fprintf(os.Stderr, "Illegal filemode (%d)\n", repo.fmode)
+			}
 		}
+		close(chRelay)
+		close(chNotify)
+	}()
 
-		switch relayRepo.fmode {
-		case FMODE_DIR:
-			if this.bFind && this.pattern.MatchString(path.Base(relayRepo.fpath)) {
-				chNotify <- relayRepo
-			}
-			if this.bRecursive {
-				nRoutines++
-				go this.dive(relayRepo.fpath, chRelay)
-			}
-		case FMODE_FILE:
-			if this.bFind && this.pattern.MatchString(path.Base(relayRepo.fpath)) {
-				chNotify <- relayRepo
-			}
-			if this.bGrep {
-				nRoutines++
-				go this.grep(relayRepo.fpath, chRelay)
-			}
-		case FMODE_LINE:
-			chNotify <- relayRepo
-		default:
-			fmt.Fprintf(os.Stderr, "Illegal filemode (%d)\n", relayRepo.fmode)
-		}
-	}
-
-	close(chRelay)
-	close(chNotify)
+	return chNotify
 }
 
 func (this gorep) dive(dir string, chRelay chan<- report) {
