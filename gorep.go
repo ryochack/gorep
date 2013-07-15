@@ -72,23 +72,7 @@ func main() {
 	/* make notify channel & start gorep */
 	chNotify := c.kick(fpath)
 
-	showReport(chNotify)
-}
-
-func showReport(chNotify <-chan report) {
-	/* receive notify */
-	for repo, ok := <-chNotify; ok; repo, ok = <-chNotify {
-		switch repo.fmode {
-		case FMODE_DIR:
-			fmt.Printf("[Dir ] %s\n", repo.fpath)
-		case FMODE_FILE:
-			fmt.Printf("[File] %s\n", repo.fpath)
-		case FMODE_LINE:
-			fmt.Printf("[Grep] %s:%s\n", repo.fpath, repo.line)
-		default:
-			fmt.Fprintf(os.Stderr, "Illegal filemode (%d)\n", repo.fmode)
-		}
-	}
+	c.showReport(chNotify)
 }
 
 func New(requireRecursive, requireFile, requireGrep bool, pattern string) *gorep {
@@ -98,6 +82,26 @@ func New(requireRecursive, requireFile, requireGrep bool, pattern string) *gorep
 		os.Exit(1)
 	}
 	return &gorep{requireRecursive, requireFile, requireGrep, compiledPattern}
+}
+
+func (this gorep) showReport(chNotify <-chan report) {
+	const accentPattern = "\x1b[1m\x1b[32m$0\x1b[36m\x1b[0m"
+	/* receive notify */
+	for repo, ok := <-chNotify; ok; repo, ok = <-chNotify {
+		switch repo.fmode {
+		case FMODE_DIR:
+			accentPath := this.pattern.ReplaceAllString(repo.fpath, accentPattern)
+			fmt.Printf("\x1b[36m[Dir ]\x1b[36m %s\n", accentPath)
+		case FMODE_FILE:
+			accentPath := this.pattern.ReplaceAllString(repo.fpath, accentPattern)
+			fmt.Printf("\x1b[34m[File]\x1b[36m %s\n", accentPath)
+		case FMODE_LINE:
+			accentLine := this.pattern.ReplaceAllString(repo.line, accentPattern)
+			fmt.Printf("\x1b[32m[Grep]\x1b[36m %s:%s\n", repo.fpath, accentLine)
+		default:
+			fmt.Fprintf(os.Stderr, "Illegal filemode (%d)\n", repo.fmode)
+		}
+	}
 }
 
 func (this gorep) kick(fpath string) <-chan report {
