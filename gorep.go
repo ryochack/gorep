@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	term "code.google.com/p/go.crypto/ssh/terminal"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -40,10 +41,25 @@ func usage(progName string) {
 }
 
 var semaphore chan int
+
 const maxNumOfFileOpen = 10
+
+var isColor bool
+
+const (
+	DIR_COLOR  = "\x1b[36m"
+	FILE_COLOR = "\x1b[34m"
+	GREP_COLOR = "\x1b[32m"
+	HIT_COLOR  = "\x1b[32m"
+	NORM_COLOR = "\x1b[39m"
+	BOLD_DECO  = "\x1b[1m"
+	NORM_DECO  = "\x1b[0m"
+)
 
 func init() {
 	semaphore = make(chan int, maxNumOfFileOpen)
+	fd := os.Stdout.Fd()
+	isColor = term.IsTerminal(int(fd))
 }
 
 func main() {
@@ -86,19 +102,34 @@ func newGorep(requireRecursive, requireFile, requireGrep bool, pattern string) *
 }
 
 func (this gorep) showReport(chNotify <-chan report) {
-	const accentPattern = "\x1b[1m\x1b[32m$0\x1b[36m\x1b[0m"
+	var accentPattern string
+	var dirPattern string
+	var filePattern string
+	var grepPattern string
+	if isColor {
+		accentPattern = BOLD_DECO + HIT_COLOR + "$0" + NORM_COLOR + NORM_DECO
+		dirPattern = DIR_COLOR + "[Dir ]" + NORM_COLOR
+		filePattern = FILE_COLOR + "[File]" + NORM_COLOR
+		grepPattern = GREP_COLOR + "[Grep]" + NORM_COLOR
+	} else {
+		accentPattern = "$0"
+		dirPattern = "[Dir ]"
+		filePattern = "[File]"
+		grepPattern = "[Grep]"
+	}
+
 	/* receive notify */
 	for repo, ok := <-chNotify; ok; repo, ok = <-chNotify {
 		switch repo.fmode {
 		case FMODE_DIR:
 			accentPath := this.pattern.ReplaceAllString(repo.fpath, accentPattern)
-			fmt.Printf("\x1b[36m[Dir ]\x1b[36m %s\n", accentPath)
+			fmt.Printf("%s %s\n", dirPattern, accentPath)
 		case FMODE_FILE:
 			accentPath := this.pattern.ReplaceAllString(repo.fpath, accentPattern)
-			fmt.Printf("\x1b[34m[File]\x1b[36m %s\n", accentPath)
+			fmt.Printf("%s %s\n", filePattern, accentPath)
 		case FMODE_LINE:
 			accentLine := this.pattern.ReplaceAllString(repo.line, accentPattern)
-			fmt.Printf("\x1b[32m[Grep]\x1b[36m %s:%s\n", repo.fpath, accentLine)
+			fmt.Printf("%s %s:%s\n", grepPattern, repo.fpath, accentLine)
 		default:
 			fmt.Fprintf(os.Stderr, "Illegal filemode (%d)\n", repo.fmode)
 		}
@@ -177,7 +208,6 @@ func (this gorep) dive(dir string, chRelay chan<- report) {
 	}
 }
 
-
 // Charactor code 0x00 - 0x08 is control code (ASCII)
 func isBinary(buf []byte) bool {
 	if bytes.IndexFunc(buf, func(r rune) bool { return r < 0x9 }) != -1 {
@@ -185,7 +215,6 @@ func isBinary(buf []byte) bool {
 	}
 	return false
 }
-
 
 func (this gorep) grep(fpath string, chRelay chan<- report) {
 	defer func() {
@@ -201,7 +230,7 @@ func (this gorep) grep(fpath string, chRelay chan<- report) {
 	}
 	defer func() {
 		file.Close()
-		<- semaphore
+		<-semaphore
 	}()
 
 	lineNumber := 0
