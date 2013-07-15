@@ -35,7 +35,7 @@ type gorep struct {
 }
 
 func usage(progName string) {
-	fmt.Printf("%s [-r] [-f] [-g] PATTERN PATH\n", path.Base(progName))
+	fmt.Printf("%s [-g] PATTERN PATH\n", path.Base(progName))
 }
 
 var semaphore chan int

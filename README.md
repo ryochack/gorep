@@ -5,10 +5,11 @@ find and grep tool
 
 ## Usage
 ```
-$ gorep [-r] [-f] [-g] PATTERN PATH
+$ gorep [-g] PATTERN(REGEXP) PATH
 
--r : enable recursive search.
--f : enable file and directory search.
 -g : enable grep.
 ```
+
+## ScreenShot
+![gorep screenshot](./gorep_screenshot.png)
 
