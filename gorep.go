@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -67,7 +68,7 @@ func main() {
 		*requireRecursive, *requireFile, *requireGrep)
 
 	/* create gorep */
-	c := New(*requireRecursive, *requireFile, *requireGrep, pattern)
+	c := newGorep(*requireRecursive, *requireFile, *requireGrep, pattern)
 
 	/* make notify channel & start gorep */
 	chNotify := c.kick(fpath)
@@ -75,7 +76,7 @@ func main() {
 	c.showReport(chNotify)
 }
 
-func New(requireRecursive, requireFile, requireGrep bool, pattern string) *gorep {
+func newGorep(requireRecursive, requireFile, requireGrep bool, pattern string) *gorep {
 	compiledPattern, err := regexp.Compile(pattern)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -176,13 +177,11 @@ func (this gorep) dive(dir string, chRelay chan<- report) {
 	}
 }
 
-// Binary check.
-// Character code deesn't include 00
+
+// Charactor code 0x00 - 0x08 is control code (ASCII)
 func isBinary(buf []byte) bool {
-	for _, b := range buf {
-		if b == 0 {
-			return true
-		}
+	if bytes.IndexFunc(buf, func(r rune) bool { return r < 0x9 }) != -1 {
+		return true
 	}
 	return false
 }
