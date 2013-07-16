@@ -5,7 +5,7 @@ find and grep tool
 
 ## Usage
 ```
-$ gorep [-g] PATTERN(REGEXP) PATH
+$ gorep [-g] PATTERN(REGEXP) [PATH]
 
 -g : enable grep.
 ```
