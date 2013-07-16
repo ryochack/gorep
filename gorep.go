@@ -235,8 +235,8 @@ func (this gorep) dive(dir string, chRelay chan<- report) {
 }
 
 // Charactor code 0x00 - 0x08 is control code (ASCII)
-func isBinary(buf []byte) bool {
-	if bytes.IndexFunc(buf, func(r rune) bool { return r < 0x9 }) != -1 {
+func identifyBinary(buf []byte) bool {
+	if bytes.IndexFunc(buf, func(r rune) bool { return r < 0x09 }) != -1 {
 		return true
 	}
 	return false
@@ -267,13 +267,18 @@ func (this gorep) grep(fpath string, chRelay chan<- report) {
 		if err != nil {
 			return
 		}
-		if isBinary(line) {
+		if identifyBinary(line) {
 			return
 		}
 		lineNumber++
+
 		fullLine := string(line)
 		if isPrefix {
-			fullLine = fullLine + "@@"
+			line, isPrefix, _ = lineReader.ReadLine()
+			if !isPrefix {
+				break
+			}
+			fullLine += string(line)
 		}
 		if this.pattern.MatchString(fullLine) {
 			formatline := fmt.Sprintf("%d: %s", lineNumber, fullLine)
