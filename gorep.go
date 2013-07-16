@@ -222,6 +222,7 @@ func isBinary(buf []byte) bool {
 
 func (this gorep) grep(fpath string, chRelay chan<- report) {
 	defer func() {
+		<-semaphore
 		chRelay <- report{true, FMODE_LINE, "", ""}
 	}()
 
@@ -234,7 +235,6 @@ func (this gorep) grep(fpath string, chRelay chan<- report) {
 	}
 	defer func() {
 		file.Close()
-		<-semaphore
 	}()
 
 	lineNumber := 0
