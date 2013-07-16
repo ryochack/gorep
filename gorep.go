@@ -19,6 +19,7 @@ type fileMode int32
 const (
 	FMODE_DIR fileMode = iota
 	FMODE_FILE
+	FMODE_SYMLINK
 	FMODE_LINE
 	FMODE_INVALID
 )
@@ -48,13 +49,14 @@ const maxNumOfFileOpen = 10
 var isColor bool
 
 const (
-	DIR_COLOR  = "\x1b[36m"
-	FILE_COLOR = "\x1b[34m"
-	GREP_COLOR = "\x1b[32m"
-	HIT_COLOR  = "\x1b[32m"
-	NORM_COLOR = "\x1b[39m"
-	BOLD_DECO  = "\x1b[1m"
-	NORM_DECO  = "\x1b[0m"
+	DIR_COLOR     = "\x1b[36m"
+	FILE_COLOR    = "\x1b[34m"
+	SYMLINK_COLOR = "\x1b[35m"
+	GREP_COLOR    = "\x1b[32m"
+	HIT_COLOR     = "\x1b[32m"
+	NORM_COLOR    = "\x1b[39m"
+	BOLD_DECO     = "\x1b[1m"
+	NORM_DECO     = "\x1b[0m"
 )
 
 func init() {
@@ -109,17 +111,20 @@ func (this gorep) showReport(chNotify <-chan report) {
 	var accentPattern string
 	var dirPattern string
 	var filePattern string
+	var symlinkPattern string
 	var grepPattern string
 	if isColor {
-		accentPattern = BOLD_DECO + HIT_COLOR + "$0" + NORM_COLOR + NORM_DECO
-		dirPattern = DIR_COLOR + "[Dir ]" + NORM_COLOR
-		filePattern = FILE_COLOR + "[File]" + NORM_COLOR
-		grepPattern = GREP_COLOR + "[Grep]" + NORM_COLOR
+		accentPattern  = BOLD_DECO + HIT_COLOR + "$0" + NORM_COLOR + NORM_DECO
+		dirPattern     = DIR_COLOR + "[Dir ]" + NORM_COLOR
+		filePattern    = FILE_COLOR + "[File]" + NORM_COLOR
+		symlinkPattern = SYMLINK_COLOR + "[SymL]" + NORM_COLOR
+		grepPattern    = GREP_COLOR + "[Grep]" + NORM_COLOR
 	} else {
-		accentPattern = "$0"
-		dirPattern = "[Dir ]"
-		filePattern = "[File]"
-		grepPattern = "[Grep]"
+		accentPattern  = "$0"
+		dirPattern     = "[Dir ]"
+		filePattern    = "[File]"
+		symlinkPattern = "[SymL]"
+		grepPattern    = "[Grep]"
 	}
 
 	/* receive notify */
@@ -131,6 +136,9 @@ func (this gorep) showReport(chNotify <-chan report) {
 		case FMODE_FILE:
 			accentPath := this.pattern.ReplaceAllString(repo.fpath, accentPattern)
 			fmt.Printf("%s %s\n", filePattern, accentPath)
+		case FMODE_SYMLINK:
+			accentPath := this.pattern.ReplaceAllString(repo.fpath, accentPattern)
+			fmt.Printf("%s %s\n", symlinkPattern, accentPath)
 		case FMODE_LINE:
 			accentLine := this.pattern.ReplaceAllString(repo.line, accentPattern)
 			fmt.Printf("%s %s:%s\n", grepPattern, repo.fpath, accentLine)
@@ -175,6 +183,10 @@ func (this gorep) kick(fpath string) <-chan report {
 				if this.bGrep {
 					nRoutines++
 					go this.grep(repo.fpath, chRelay)
+				}
+			case FMODE_SYMLINK:
+				if this.bFind && this.pattern.MatchString(path.Base(repo.fpath)) {
+					chNotify <- repo
 				}
 			case FMODE_LINE:
 				chNotify <- repo
