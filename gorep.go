@@ -11,6 +11,7 @@ import (
 	"path"
 	"regexp"
 	"runtime"
+	"strings"
 )
 
 type fileMode int32
@@ -37,7 +38,7 @@ type gorep struct {
 }
 
 func usage(progName string) {
-	fmt.Printf("%s [-g] PATTERN PATH\n", path.Base(progName))
+	fmt.Printf("%s [-g] PATTERN [PATH]\n", path.Base(progName))
 }
 
 var semaphore chan int
@@ -72,13 +73,16 @@ func main() {
 	requireGrep := flag.Bool("g", false, "enable grep.")
 	flag.Parse()
 
-	if flag.NArg() < 2 {
+	if flag.NArg() < 1 {
 		usage(os.Args[0])
 		os.Exit(0)
 	}
 
 	pattern := flag.Arg(0)
-	fpath := flag.Arg(1)
+	fpath := "."
+	if flag.NArg() >= 2 {
+		fpath = strings.TrimRight(flag.Arg(1), "/")
+	}
 
 	fmt.Printf("pattern:%s path:%s -r:%v -f:%v -g:%v\n", pattern, fpath,
 		*requireRecursive, *requireFile, *requireGrep)
