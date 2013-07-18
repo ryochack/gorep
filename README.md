@@ -1,13 +1,16 @@
 # gorep
-
-## WHATS
-find and grep tool
+gorep is find and grep tool.
 
 ## Usage
 ```
-$ gorep [-g] PATTERN(REGEXP) [PATH]
+Usage:
 
--g : enable grep.
+    gorep [options] pattern [path]
+
+The options are:
+
+    -g    : enable grep
+    -V    : print gorep version
 ```
 
 ## ScreenShot

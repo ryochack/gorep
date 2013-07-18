@@ -14,6 +14,8 @@ import (
 	"strings"
 )
 
+const version = "0.1"
+
 type fileMode int32
 
 const (
@@ -38,8 +40,21 @@ type gorep struct {
 	pattern    *regexp.Regexp
 }
 
-func usage(progName string) {
-	fmt.Printf("%s [-g] PATTERN [PATH]\n", path.Base(progName))
+func usage() {
+	fmt.Fprintf(os.Stderr, `gorep is find and grep tool.
+
+Version: %s
+
+Usage:
+
+    gorep [options] pattern [path]
+
+The options are:
+
+    -g    : enable grep
+    -V    : print gorep version
+`, version)
+	os.Exit(-1)
 }
 
 var semaphore chan int
@@ -73,11 +88,16 @@ func main() {
 	requireRecursive := flag.Bool("r", true, "enable recursive search.")
 	requireFile := flag.Bool("f", true, "enable file search.")
 	requireGrep := flag.Bool("g", false, "enable grep.")
+	requireVersion := flag.Bool("V", false, "show version.")
 	flag.Parse()
 
-	if flag.NArg() < 1 {
-		usage(os.Args[0])
+	if *requireVersion {
+		fmt.Printf("version: %s\n", version)
 		os.Exit(0)
+	}
+
+	if flag.NArg() < 1 {
+		usage()
 	}
 
 	pattern := flag.Arg(0)
@@ -102,7 +122,7 @@ func newGorep(requireRecursive, requireFile, requireGrep bool, pattern string) *
 	compiledPattern, err := regexp.Compile(pattern)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		os.Exit(-1)
 	}
 	return &gorep{requireRecursive, requireFile, requireGrep, compiledPattern}
 }
@@ -210,7 +230,7 @@ func (this gorep) dive(dir string, chRelay chan<- report) {
 	list, err := ioutil.ReadDir(dir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		os.Exit(1)
+		os.Exit(-1)
 	}
 
 	const ignoreFlag = os.ModeDir | os.ModeAppend | os.ModeExclusive | os.ModeTemporary |
