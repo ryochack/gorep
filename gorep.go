@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	term "code.google.com/p/go.crypto/ssh/terminal"
 	"flag"
@@ -12,6 +11,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 )
 
 const version = "0.1"
@@ -229,7 +229,7 @@ func (this gorep) dive(dir string, chRelay chan<- report) {
 	/* expand dir */
 	list, err := ioutil.ReadDir(dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "dive error: %v\n", err)
 		os.Exit(-1)
 	}
 
@@ -256,7 +256,13 @@ func (this gorep) dive(dir string, chRelay chan<- report) {
 
 // Charactor code 0x00 - 0x08 is control code (ASCII)
 func identifyBinary(buf []byte) bool {
-	if bytes.IndexFunc(buf, func(r rune) bool { return r < 0x09 }) != -1 {
+	var b []byte
+	if len(buf) > 256 {
+		b = buf[:256]
+	} else {
+		b = buf
+	}
+	if bytes.IndexFunc(b, func(r rune) bool { return r < 0x09 }) != -1 {
 		return true
 	}
 	return false
@@ -272,36 +278,47 @@ func (this gorep) grep(fpath string, chRelay chan<- report) {
 
 	file, err := os.Open(fpath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		fmt.Fprintf(os.Stderr, "grep open error: %v\n", err)
 		return
 	}
-	defer func() {
-		file.Close()
-	}()
+	defer file.Close()
+
+	fi, err := file.Stat()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "grep stat error: %v\n", err)
+		return
+	}
+
+	mem, err := syscall.Mmap(int(file.Fd()), 0, int(fi.Size()),
+							syscall.PROT_READ, syscall.MAP_SHARED)
+	if err != nil {
+		//fmt.Fprintf(os.Stderr, "grep mmap error: %v\n", err)
+		return
+	}
+	defer syscall.Munmap(mem)
+
+	if identifyBinary(mem) {
+		return
+	}
 
 	lineNumber := 0
-	lineReader := bufio.NewReaderSize(file, 256)
+	var line []byte
 
-	for {
-		line, isPrefix, err := lineReader.ReadLine()
-		if err != nil {
-			return
+	for m := mem; len(m) > 0;  {
+		index := bytes.IndexRune(m, rune('\n'))
+		if index != -1 {
+			line = m[:index]
+			m = m[len(line)+1:]	/* +1 is to skip '\n' */
+		} else {
+			line = m
+			m = m[len(line):]
 		}
-		if identifyBinary(line) {
-			return
-		}
+
 		lineNumber++
+		strline := string(line)
 
-		fullLine := string(line)
-		if isPrefix {
-			line, isPrefix, _ = lineReader.ReadLine()
-			if !isPrefix {
-				break
-			}
-			fullLine += string(line)
-		}
-		if this.pattern.MatchString(fullLine) {
-			formatline := fmt.Sprintf("%d: %s", lineNumber, fullLine)
+		if this.pattern.MatchString(strline) {
+			formatline := fmt.Sprintf("%d: %s", lineNumber, strline)
 			chRelay <- report{false, FMODE_LINE, fpath, formatline}
 		}
 	}
