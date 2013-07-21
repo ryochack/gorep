@@ -14,7 +14,7 @@ import (
 	"syscall"
 )
 
-const version = "0.1"
+const version = "0.1.1"
 
 type fileMode int32
 
