@@ -292,7 +292,7 @@ func (this gorep) grep(fpath string, chRelay chan<- report) {
 	mem, err := syscall.Mmap(int(file.Fd()), 0, int(fi.Size()),
 							syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
-		//fmt.Fprintf(os.Stderr, "grep mmap error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "grep mmap error: %v\n", err)
 		return
 	}
 	defer syscall.Munmap(mem)
