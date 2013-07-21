@@ -294,12 +294,15 @@ func (this gorep) grep(fpath string, chRelay chan<- report) {
 
 		fullLine := string(line)
 		if isPrefix {
-			line, isPrefix, _ = lineReader.ReadLine()
-			if !isPrefix {
-				break
+			for {
+				line, isPrefix, _ = lineReader.ReadLine()
+				fullLine += string(line)
+				if !isPrefix {
+					break
+				}
 			}
-			fullLine += string(line)
 		}
+
 		if this.pattern.MatchString(fullLine) {
 			formatline := fmt.Sprintf("%d: %s", lineNumber, fullLine)
 			chRelay <- report{false, FMODE_LINE, fpath, formatline}
