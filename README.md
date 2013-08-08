@@ -9,8 +9,9 @@ Usage:
 
 The options are:
 
-    -g    : enable grep
-    -V    : print gorep version
+    -V             : print gorep version
+    -g             : enable grep
+    -search-binary : search binary files for matches on grep enable
 ```
 
 ## ScreenShot

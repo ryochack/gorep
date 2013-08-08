@@ -15,7 +15,7 @@ import (
 	"syscall"
 )
 
-const version = "0.2.0"
+const version = "0.2.1"
 
 type channelSet struct {
 	dir chan string
@@ -25,8 +25,9 @@ type channelSet struct {
 }
 
 type optionSet struct {
-	g bool
 	v bool
+	g bool
+	search_binary bool
 }
 
 type gorep struct {
@@ -53,8 +54,9 @@ Usage:
 
 The options are:
 
-    -g    : enable grep
-    -V    : print gorep version
+    -V             : print gorep version
+    -g             : enable grep
+    -search-binary : search binary files for matches on grep enable
 `, version)
 	os.Exit(-1)
 }
@@ -63,7 +65,7 @@ func init() {
 	semaphore = make(chan int, maxNumOfFileOpen)
 }
 
-func isColor() bool {
+func verifyColor() bool {
 	fd := os.Stdout.Fd()
 	isTerm := terminal.IsTerminal(int(fd))
 	return isTerm
@@ -73,8 +75,9 @@ func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
 	var opt optionSet
-	flag.BoolVar(&opt.g, "g", false, "enable grep.")
 	flag.BoolVar(&opt.v, "V", false, "show version.")
+	flag.BoolVar(&opt.g, "g", false, "enable grep.")
+	flag.BoolVar(&opt.search_binary, "search-binary", false, "search binary files for matches on grep enable.")
 	flag.Parse()
 
 	if opt.v {
@@ -96,7 +99,7 @@ func main() {
 	g := newGorep(pattern, &opt)
 	chans := g.kick(fpath)
 
-	g.report(chans, isColor())
+	g.report(chans, verifyColor())
 }
 
 const (
@@ -111,19 +114,19 @@ const (
 )
 
 func (this gorep) report(chans *channelSet, isColor bool) {
-	var markAccent string
+	var markMatch string
 	var markDir string
 	var markFile string
 	var markSymlink string
 	var markGrep string
 	if isColor {
-		markAccent  = BOLD_DECO + HIT_COLOR + "$0" + NORM_COLOR + NORM_DECO
+		markMatch   = BOLD_DECO + HIT_COLOR + "$0" + NORM_COLOR + NORM_DECO
 		markDir     = DIR_COLOR + "[Dir ]" + NORM_COLOR
 		markFile    = FILE_COLOR + "[File]" + NORM_COLOR
 		markSymlink = SYMLINK_COLOR + "[SymL]" + NORM_COLOR
 		markGrep    = GREP_COLOR + "[Grep]" + NORM_COLOR
 	} else {
-		markAccent  = "$0"
+		markMatch   = "$0"
 		markDir     = "[Dir ]"
 		markFile    = "[File]"
 		markSymlink = "[SymL]"
@@ -141,10 +144,10 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 	}
 
 	waitReports.Add(4)
-	go reporter(markDir    , markAccent, chans.dir)
-	go reporter(markFile   , markAccent, chans.file)
-	go reporter(markSymlink, markAccent, chans.symlink)
-	go reporter(markGrep   , markAccent, chans.line)
+	go reporter(markDir    , markMatch, chans.dir)
+	go reporter(markFile   , markMatch, chans.file)
+	go reporter(markSymlink, markMatch, chans.symlink)
+	go reporter(markGrep   , markMatch, chans.line)
 	waitReports.Wait()
 }
 
@@ -261,7 +264,7 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 }
 
 // Charactor code 0x00 - 0x08 is control code (ASCII)
-func isBinary(buf []byte) bool {
+func verifyBinary(buf []byte) bool {
 	var b []byte
 	if len(buf) > 256 {
 		b = buf[:256]
@@ -302,7 +305,8 @@ func (this gorep) grep(fpath string, out chan<- string) {
 	}
 	defer syscall.Munmap(mem)
 
-	if isBinary(mem) {
+	isBinary := verifyBinary(mem)
+	if isBinary && !this.opt.search_binary {
 		return
 	}
 
@@ -323,8 +327,14 @@ func (this gorep) grep(fpath string, out chan<- string) {
 		strline := string(line)
 
 		if this.pattern.MatchString(strline) {
-			formattedline := fmt.Sprintf("%s:%d: %s", fpath, lineNumber, strline)
-			out <- formattedline
+			if isBinary {
+				formattedline := fmt.Sprintf("Binary file %s matches", fpath)
+				out <- formattedline
+				return
+			} else {
+				formattedline := fmt.Sprintf("%s:%d: %s", fpath, lineNumber, strline)
+				out <- formattedline
+			}
 		}
 	}
 }
