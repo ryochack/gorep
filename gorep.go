@@ -15,7 +15,7 @@ import (
 	"syscall"
 )
 
-const version = "0.2.1"
+const version = "0.2.2"
 
 type channelSet struct {
 	dir chan string
@@ -28,6 +28,7 @@ type optionSet struct {
 	v bool
 	g bool
 	search_binary bool
+	hidden bool
 }
 
 type gorep struct {
@@ -57,6 +58,7 @@ The options are:
     -V             : print gorep version
     -g             : enable grep
     -search-binary : search binary files for matches on grep enable
+    --hidden       : search hidden files
 `, version)
 	os.Exit(-1)
 }
@@ -78,6 +80,7 @@ func main() {
 	flag.BoolVar(&opt.v, "V", false, "show version.")
 	flag.BoolVar(&opt.g, "g", false, "enable grep.")
 	flag.BoolVar(&opt.search_binary, "search-binary", false, "search binary files for matches on grep enable.")
+	flag.BoolVar(&opt.hidden, "hidden", false, "search hidden files.")
 	flag.Parse()
 
 	if opt.v {
@@ -193,6 +196,15 @@ func closeChannelSet(chans *channelSet) {
 	close(chans.line)
 }
 
+func verifyHidden(fpath string) bool {
+	byteStr := []byte(path.Base(fpath))
+	// don't consider current directory(./) and parent directory(../)
+	if '.' == byteStr[0] {
+		return true
+	}
+	return false
+}
+
 func (this gorep) mapfork(fpath string, chans *channelSet) {
 	defer waitMaps.Done()
 
@@ -209,6 +221,9 @@ func (this gorep) mapfork(fpath string, chans *channelSet) {
 
 	for _, finfo := range list {
 		mode := finfo.Mode()
+		if !this.opt.hidden && verifyHidden(finfo.Name()) {
+			continue
+		}
 		switch true {
 		case mode & os.ModeDir != 0:
 			fullpath := fpath + separator + finfo.Name()
