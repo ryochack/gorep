@@ -15,7 +15,7 @@ import (
 	"syscall"
 )
 
-const version = "0.2.3"
+const version = "0.2.4"
 
 type channelSet struct {
 	dir chan string
@@ -27,6 +27,7 @@ type channelSet struct {
 type optionSet struct {
 	v bool
 	g bool
+	grep_only bool
 	search_binary bool
 	ignore string
 	hidden bool
@@ -60,6 +61,7 @@ The options are:
 
     -V              : print gorep version
     -g              : enable grep
+    -grep-only      : enable grep and disable file search
     -search-binary  : search binary files for matches on grep enable
     -ignore pattern : pattern is ignored
     --hidden        : search hidden files
@@ -91,6 +93,7 @@ func main() {
 	flag.BoolVar(&opt.v, "V", false, "show version.")
 	flag.BoolVar(&opt.g, "g", false, "enable grep.")
 	flag.BoolVar(&opt.search_binary, "search-binary", false, "search binary files for matches on grep enable.")
+	flag.BoolVar(&opt.grep_only, "grep-only", false, "enable grep and disable file search.")
 	flag.StringVar(&opt.ignore, "ignore", "", "pattern is ignored.")
 	flag.BoolVar(&opt.hidden, "hidden", false, "search hidden files.")
 	flag.Parse()
@@ -280,7 +283,9 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 	// directory
 	go func(in <-chan string, out chan<- string) {
 		for msg := range in {
-			filter(msg, out)
+			if !this.opt.grep_only {
+				filter(msg, out)
+			}
 		}
 		close(out)
 	}(chsIn.dir, chsOut.dir)
@@ -288,8 +293,10 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 	// file
 	go func(in <-chan string, out chan<- string, chLine chan<- string) {
 		for msg := range in {
-			filter(msg, out)
-			if this.opt.g {
+			if !this.opt.grep_only {
+				filter(msg, out)
+			}
+			if this.opt.g || this.opt.grep_only {
 				waitGreps.Add(1)
 				go this.grep(msg, chLine)
 			}
@@ -302,7 +309,9 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 	// symlink
 	go func(in <-chan string, out chan<- string) {
 		for msg := range in {
-			filter(msg, out)
+			if !this.opt.grep_only {
+				filter(msg, out)
+			}
 		}
 		close(out)
 	}(chsIn.symlink, chsOut.symlink)
