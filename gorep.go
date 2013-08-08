@@ -15,7 +15,7 @@ import (
 	"syscall"
 )
 
-const version = "0.2.4"
+const version = "0.2.5"
 
 type channelSet struct {
 	dir chan string
@@ -31,6 +31,7 @@ type optionSet struct {
 	search_binary bool
 	ignore string
 	hidden bool
+	ignorecase bool
 }
 
 type gorep struct {
@@ -64,7 +65,8 @@ The options are:
     -grep-only      : enable grep and disable file search
     -search-binary  : search binary files for matches on grep enable
     -ignore pattern : pattern is ignored
-    --hidden        : search hidden files
+    -hidden         : search hidden files
+    -ignorecase     : ignore case distinctions in pattern
 `, version)
 	os.Exit(-1)
 }
@@ -96,6 +98,7 @@ func main() {
 	flag.BoolVar(&opt.grep_only, "grep-only", false, "enable grep and disable file search.")
 	flag.StringVar(&opt.ignore, "ignore", "", "pattern is ignored.")
 	flag.BoolVar(&opt.hidden, "hidden", false, "search hidden files.")
+	flag.BoolVar(&opt.ignorecase, "ignorecase", false, "ignore case distinctions in pattern.")
 	flag.Parse()
 
 	if opt.v {
@@ -170,6 +173,9 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 }
 
 func newGorep(pattern string, opt *optionSet) *gorep {
+	if opt.ignorecase {
+		pattern = "(?i)" + pattern
+	}
 	compiledPattern, err := regexp.Compile(pattern)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -177,6 +183,9 @@ func newGorep(pattern string, opt *optionSet) *gorep {
 	}
 	var compiledIgnorePattern *regexp.Regexp
 	if len(opt.ignore) > 0 {
+		if opt.ignorecase {
+			opt.ignore = "(?i)" + opt.ignore
+		}
 		compiledIgnorePattern, err = regexp.Compile(opt.ignore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)

@@ -15,6 +15,7 @@ The options are:
     -search-binary   : search binary files for matches on grep enable
     --ignore pattern : pattern is ignored
     -hidden          : search hidden files
+    -ignorecase      : ignore case distinctions in pattern
 ```
 
 ## ScreenShot
