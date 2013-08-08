@@ -36,7 +36,8 @@ type gorep struct {
 	opt optionSet
 }
 
-var semaphore chan int
+var semPrint chan int
+var semFopenLimit chan int
 const maxNumOfFileOpen = 10
 
 var waitMaps sync.WaitGroup
@@ -64,13 +65,20 @@ The options are:
 }
 
 func init() {
-	semaphore = make(chan int, maxNumOfFileOpen)
+	semPrint = make(chan int, 1)
+	semFopenLimit = make(chan int, maxNumOfFileOpen)
 }
 
 func verifyColor() bool {
 	fd := os.Stdout.Fd()
 	isTerm := terminal.IsTerminal(int(fd))
 	return isTerm
+}
+
+func printline(line string) {
+	semPrint <- 1
+	os.Stdout.Write([]byte(line))
+	<- semPrint
 }
 
 func main() {
@@ -142,7 +150,7 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 		defer waitReports.Done()
 		for msg := range ch {
 			decoStr := this.pattern.ReplaceAllString(msg, accent)
-			fmt.Printf("%s %s\n", mark, decoStr)
+			printline(fmt.Sprintf("%s %s\n", mark, decoStr))
 		}
 	}
 
@@ -294,11 +302,11 @@ func verifyBinary(buf []byte) bool {
 
 func (this gorep) grep(fpath string, out chan<- string) {
 	defer func() {
-		<- semaphore
+		<- semFopenLimit
 		waitGreps.Done()
 	}()
 
-	semaphore <- 1
+	semFopenLimit <- 1
 	file, err := os.Open(fpath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "grep open error: %v\n", err)
