@@ -15,7 +15,7 @@ import (
 	"syscall"
 )
 
-const version = "0.2.2"
+const version = "0.2.3"
 
 type channelSet struct {
 	dir chan string
@@ -28,11 +28,13 @@ type optionSet struct {
 	v bool
 	g bool
 	search_binary bool
+	ignore string
 	hidden bool
 }
 
 type gorep struct {
 	pattern *regexp.Regexp
+	ignorePattern *regexp.Regexp
 	opt optionSet
 }
 
@@ -56,10 +58,11 @@ Usage:
 
 The options are:
 
-    -V             : print gorep version
-    -g             : enable grep
-    -search-binary : search binary files for matches on grep enable
-    --hidden       : search hidden files
+    -V              : print gorep version
+    -g              : enable grep
+    -search-binary  : search binary files for matches on grep enable
+    -ignore pattern : pattern is ignored
+    --hidden        : search hidden files
 `, version)
 	os.Exit(-1)
 }
@@ -88,6 +91,7 @@ func main() {
 	flag.BoolVar(&opt.v, "V", false, "show version.")
 	flag.BoolVar(&opt.g, "g", false, "enable grep.")
 	flag.BoolVar(&opt.search_binary, "search-binary", false, "search binary files for matches on grep enable.")
+	flag.StringVar(&opt.ignore, "ignore", "", "pattern is ignored.")
 	flag.BoolVar(&opt.hidden, "hidden", false, "search hidden files.")
 	flag.Parse()
 
@@ -105,7 +109,7 @@ func main() {
 		fpath = strings.TrimRight(flag.Arg(1), separator)
 	}
 
-	fmt.Printf("pattern:%s path:%s -g:%v\n", pattern, fpath, opt.g)
+	fmt.Printf("pattern:%s (ignore:%s) path:%s -g:%v\n", pattern, opt.ignore, fpath, opt.g)
 
 	g := newGorep(pattern, &opt)
 	chans := g.kick(fpath)
@@ -168,7 +172,21 @@ func newGorep(pattern string, opt *optionSet) *gorep {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(-1)
 	}
-	return &gorep{opt:*opt, pattern:compiledPattern}
+	var compiledIgnorePattern *regexp.Regexp
+	if len(opt.ignore) > 0 {
+		compiledIgnorePattern, err = regexp.Compile(opt.ignore)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(-1)
+		}
+	} else {
+		compiledIgnorePattern = nil
+	}
+	return &gorep{
+		pattern: compiledPattern,
+		ignorePattern: compiledIgnorePattern,
+		opt: *opt,
+	}
 }
 
 func (this gorep) kick(fpath string) *channelSet {
@@ -229,19 +247,23 @@ func (this gorep) mapfork(fpath string, chans *channelSet) {
 
 	for _, finfo := range list {
 		mode := finfo.Mode()
-		if !this.opt.hidden && verifyHidden(finfo.Name()) {
+		fname := finfo.Name()
+		if !this.opt.hidden && verifyHidden(fname) {
+			continue
+		}
+		if this.ignorePattern != nil && this.ignorePattern.MatchString(fname) {
 			continue
 		}
 		switch true {
 		case mode & os.ModeDir != 0:
-			fullpath := fpath + separator + finfo.Name()
+			fullpath := fpath + separator + fname
 			chans.dir <- fullpath
 			waitMaps.Add(1)
 			go this.mapfork(fullpath, chans)
 		case mode & os.ModeSymlink != 0:
-			chans.symlink <- fpath + separator + finfo.Name()
+			chans.symlink <- fpath + separator + fname
 		case mode & ignoreFlag == 0:
-			chans.file <- fpath + separator + finfo.Name()
+			chans.file <- fpath + separator + fname
 		default:
 			continue
 		}
@@ -355,6 +377,9 @@ func (this gorep) grep(fpath string, out chan<- string) {
 				out <- formattedline
 				return
 			} else {
+				if this.ignorePattern != nil && this.ignorePattern.MatchString(strline) {
+					continue
+				}
 				formattedline := fmt.Sprintf("%s:%d: %s", fpath, lineNumber, strline)
 				out <- formattedline
 			}
