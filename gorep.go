@@ -17,11 +17,17 @@ import (
 
 const version = "0.2.5"
 
+type grepInfo struct {
+	fpath      string
+	lineNumber int
+	line       string
+}
+
 type channelSet struct {
 	dir     chan string
 	file    chan string
 	symlink chan string
-	line    chan string
+	grep    chan grepInfo
 }
 
 type optionSet struct {
@@ -164,11 +170,25 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 		}
 	}()
 
-	reporter := func(mark string, accent string, ch <-chan string) {
+	reporter := func(mark string, accent string, chanIf interface{}) {
 		defer waitReports.Done()
-		for msg := range ch {
-			decoStr := this.pattern.ReplaceAllString(msg, accent)
-			chPrint <- []byte(fmt.Sprintf("%s %s\n", mark, decoStr))
+		switch ch := chanIf.(type) {
+		case chan string:
+			for msg := range ch {
+				decoStr := this.pattern.ReplaceAllString(msg, accent)
+				chPrint <- []byte(fmt.Sprintf("%s %s\n", mark, decoStr))
+			}
+		case chan grepInfo:
+			for msg := range ch {
+				if msg.lineNumber != 0 {
+					decoStr := this.pattern.ReplaceAllString(msg.line, accent)
+					chPrint <- []byte(fmt.Sprintf("%s %s:%d: %s\n", mark, msg.fpath, msg.lineNumber, decoStr))
+				} else { // binary file
+					chPrint <- []byte(fmt.Sprintf("%s %s\n", mark, msg.line))
+				}
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "reporter type error!\n")
 		}
 	}
 
@@ -176,7 +196,7 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 	go reporter(markDir, markMatch, chans.dir)
 	go reporter(markFile, markMatch, chans.file)
 	go reporter(markSymlink, markMatch, chans.symlink)
-	go reporter(markGrep, markMatch, chans.line)
+	go reporter(markGrep, markMatch, chans.grep)
 	waitReports.Wait()
 }
 
@@ -259,7 +279,7 @@ func makeChannelSet() *channelSet {
 		dir:     make(chan string),
 		file:    make(chan string),
 		symlink: make(chan string),
-		line:    make(chan string),
+		grep:    make(chan grepInfo),
 	}
 }
 
@@ -267,7 +287,7 @@ func closeChannelSet(chans *channelSet) {
 	close(chans.dir)
 	close(chans.file)
 	close(chans.symlink)
-	close(chans.line)
+	close(chans.grep)
 }
 
 func verifyHidden(fpath string) bool {
@@ -336,7 +356,7 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 	}(chsIn.dir, chsOut.dir)
 
 	// file
-	go func(in <-chan string, out chan<- string, chLine chan<- string) {
+	go func(in <-chan string, out chan<- string, chLine chan<- grepInfo) {
 		for msg := range in {
 			if this.scope.file {
 				filter(msg, out)
@@ -349,7 +369,7 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 		close(out)
 		waitGreps.Wait()
 		close(chLine)
-	}(chsIn.file, chsOut.file, chsOut.line)
+	}(chsIn.file, chsOut.file, chsOut.grep)
 
 	// symlink
 	go func(in <-chan string, out chan<- string) {
@@ -376,7 +396,7 @@ func verifyBinary(buf []byte) bool {
 	return false
 }
 
-func (this gorep) grep(fpath string, out chan<- string) {
+func (this gorep) grep(fpath string, out chan<- grepInfo) {
 	defer func() {
 		<-semFopenLimit
 		waitGreps.Done()
@@ -427,15 +447,13 @@ func (this gorep) grep(fpath string, out chan<- string) {
 
 		if this.pattern.MatchString(strline) {
 			if isBinary {
-				formattedline := fmt.Sprintf("Binary file %s matches", fpath)
-				out <- formattedline
+				out <- grepInfo{fpath, 0, fmt.Sprintf("Binary file %s matches", fpath)}
 				return
 			} else {
 				if this.ignorePattern != nil && this.ignorePattern.MatchString(strline) {
 					continue
 				}
-				formattedline := fmt.Sprintf("%s:%d: %s", fpath, lineNumber, strline)
-				out <- formattedline
+				out <- grepInfo{fpath, lineNumber, strline}
 			}
 		}
 	}
