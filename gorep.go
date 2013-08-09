@@ -49,7 +49,6 @@ type gorep struct {
 	scope searchScope
 }
 
-var semPrint chan int
 var semFopenLimit chan int
 const maxNumOfFileOpen = 10
 
@@ -81,7 +80,6 @@ The options are:
 }
 
 func init() {
-	semPrint = make(chan int, 1)
 	semFopenLimit = make(chan int, maxNumOfFileOpen)
 }
 
