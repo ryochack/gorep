@@ -91,12 +91,6 @@ func verifyColor() bool {
 	return isTerm
 }
 
-func printline(line string) {
-	semPrint <- 1
-	os.Stdout.Write([]byte(line))
-	<- semPrint
-}
-
 func main() {
 	runtime.GOMAXPROCS(runtime.NumCPU())
 
@@ -163,11 +157,19 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 
 	var waitReports sync.WaitGroup
 
+	chPrint := make(chan []byte)
+	// printer
+	go func() {
+		for {
+			os.Stdout.Write(<-chPrint)
+		}
+	}()
+
 	reporter := func(mark string, accent string, ch <-chan string) {
 		defer waitReports.Done()
 		for msg := range ch {
 			decoStr := this.pattern.ReplaceAllString(msg, accent)
-			printline(fmt.Sprintf("%s %s\n", mark, decoStr))
+			chPrint <- []byte(fmt.Sprintf("%s %s\n", mark, decoStr))
 		}
 	}
 
