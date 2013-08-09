@@ -263,7 +263,7 @@ func (this gorep) kick(fpath string) *channelSet {
 
 	go func() {
 		waitMaps.Add(1)
-		this.mapfork(fpath, chsMap)
+		this.mapsend(fpath, chsMap)
 		waitMaps.Wait()
 		closeChannelSet(chsMap)
 	}()
@@ -299,7 +299,7 @@ func verifyHidden(fpath string) bool {
 	return false
 }
 
-func (this gorep) mapfork(fpath string, chans *channelSet) {
+func (this gorep) mapsend(fpath string, chans *channelSet) {
 	defer waitMaps.Done()
 
 	/* expand dir */
@@ -325,13 +325,23 @@ func (this gorep) mapfork(fpath string, chans *channelSet) {
 		switch true {
 		case mode&os.ModeDir != 0:
 			fullpath := fpath + separator + fname
-			chans.dir <- fullpath
+			if this.scope.dir {
+				chans.dir <- fullpath
+			}
 			waitMaps.Add(1)
-			go this.mapfork(fullpath, chans)
+			go this.mapsend(fullpath, chans)
 		case mode&os.ModeSymlink != 0:
-			chans.symlink <- fpath + separator + fname
+			if this.scope.symlink {
+				chans.symlink <- fpath + separator + fname
+			}
 		case mode&ignoreFlag == 0:
-			chans.file <- fpath + separator + fname
+			fullpath := fpath + separator + fname
+			if this.scope.file {
+				chans.file <- fullpath
+			}
+			if this.scope.grep {
+				chans.grep <- grepInfo{fullpath, 0, ""}
+			}
 		default:
 			continue
 		}
@@ -339,47 +349,33 @@ func (this gorep) mapfork(fpath string, chans *channelSet) {
 }
 
 func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
-	filter := func(msg string, out chan<- string) {
-		if this.pattern.MatchString(path.Base(msg)) {
-			out <- msg
+	filter := func(in <-chan string, out chan<- string) {
+		for msg := range in {
+			if this.pattern.MatchString(path.Base(msg)) {
+				out <- msg
+			}
 		}
+		close(out)
 	}
 
 	// directory
-	go func(in <-chan string, out chan<- string) {
-		for msg := range in {
-			if this.scope.dir {
-				filter(msg, out)
-			}
-		}
-		close(out)
-	}(chsIn.dir, chsOut.dir)
+	go filter(chsIn.dir, chsOut.dir)
 
 	// file
-	go func(in <-chan string, out chan<- string, chLine chan<- grepInfo) {
-		for msg := range in {
-			if this.scope.file {
-				filter(msg, out)
-			}
-			if this.scope.grep {
-				waitGreps.Add(1)
-				go this.grep(msg, chLine)
-			}
-		}
-		close(out)
-		waitGreps.Wait()
-		close(chLine)
-	}(chsIn.file, chsOut.file, chsOut.grep)
+	go filter(chsIn.file, chsOut.file)
 
 	// symlink
-	go func(in <-chan string, out chan<- string) {
+	go filter(chsIn.symlink, chsOut.symlink)
+
+	// grep
+	go func(in <-chan grepInfo, out chan<- grepInfo) {
 		for msg := range in {
-			if this.scope.symlink {
-				filter(msg, out)
-			}
+			waitGreps.Add(1)
+			go this.grep(msg.fpath, out)
 		}
+		waitGreps.Wait()
 		close(out)
-	}(chsIn.symlink, chsOut.symlink)
+	}(chsIn.grep, chsOut.grep)
 }
 
 // Charactor code 0x00 - 0x08 is control code (ASCII)
