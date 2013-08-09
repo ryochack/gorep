@@ -18,38 +18,39 @@ import (
 const version = "0.2.5"
 
 type channelSet struct {
-	dir chan string
-	file chan string
+	dir     chan string
+	file    chan string
 	symlink chan string
-	line chan string
+	line    chan string
 }
 
 type optionSet struct {
-	v bool
-	g bool
-	grep_only bool
+	v             bool
+	g             bool
+	grep_only     bool
 	search_binary bool
-	ignore string
-	hidden bool
-	ignorecase bool
+	ignore        string
+	hidden        bool
+	ignorecase    bool
 }
 
 type searchScope struct {
-	dir bool
-	file bool
+	dir     bool
+	file    bool
 	symlink bool
-	grep bool
-	binary bool
-	hidden bool
+	grep    bool
+	binary  bool
+	hidden  bool
 }
 
 type gorep struct {
-	pattern *regexp.Regexp
+	pattern       *regexp.Regexp
 	ignorePattern *regexp.Regexp
-	scope searchScope
+	scope         searchScope
 }
 
 var semFopenLimit chan int
+
 const maxNumOfFileOpen = 10
 
 var waitMaps sync.WaitGroup
@@ -140,17 +141,17 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 	var markSymlink string
 	var markGrep string
 	if isColor {
-		markMatch   = BOLD_DECO + HIT_COLOR + "$0" + NORM_COLOR + NORM_DECO
-		markDir     = DIR_COLOR + "[Dir ]" + NORM_COLOR
-		markFile    = FILE_COLOR + "[File]" + NORM_COLOR
+		markMatch = BOLD_DECO + HIT_COLOR + "$0" + NORM_COLOR + NORM_DECO
+		markDir = DIR_COLOR + "[Dir ]" + NORM_COLOR
+		markFile = FILE_COLOR + "[File]" + NORM_COLOR
 		markSymlink = SYMLINK_COLOR + "[SymL]" + NORM_COLOR
-		markGrep    = GREP_COLOR + "[Grep]" + NORM_COLOR
+		markGrep = GREP_COLOR + "[Grep]" + NORM_COLOR
 	} else {
-		markMatch   = "$0"
-		markDir     = "[Dir ]"
-		markFile    = "[File]"
+		markMatch = "$0"
+		markDir = "[Dir ]"
+		markFile = "[File]"
 		markSymlink = "[SymL]"
-		markGrep    = "[Grep]"
+		markGrep = "[Grep]"
 	}
 
 	var waitReports sync.WaitGroup
@@ -172,24 +173,24 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 	}
 
 	waitReports.Add(4)
-	go reporter(markDir    , markMatch, chans.dir)
-	go reporter(markFile   , markMatch, chans.file)
+	go reporter(markDir, markMatch, chans.dir)
+	go reporter(markFile, markMatch, chans.file)
 	go reporter(markSymlink, markMatch, chans.symlink)
-	go reporter(markGrep   , markMatch, chans.line)
+	go reporter(markGrep, markMatch, chans.line)
 	waitReports.Wait()
 }
 
 func newGorep(pattern string, opt *optionSet) *gorep {
 	base := &gorep{
-		pattern: nil,
+		pattern:       nil,
 		ignorePattern: nil,
 		scope: searchScope{
-			dir: true,
-			file: true,
+			dir:     true,
+			file:    true,
 			symlink: true,
-			grep: false,
-			binary: false,
-			hidden: false,
+			grep:    false,
+			binary:  false,
+			hidden:  false,
 		},
 	}
 
@@ -255,10 +256,10 @@ func (this gorep) kick(fpath string) *channelSet {
 
 func makeChannelSet() *channelSet {
 	return &channelSet{
-		dir: make(chan string),
-		file: make(chan string),
+		dir:     make(chan string),
+		file:    make(chan string),
 		symlink: make(chan string),
-		line: make(chan string),
+		line:    make(chan string),
 	}
 }
 
@@ -289,8 +290,8 @@ func (this gorep) mapfork(fpath string, chans *channelSet) {
 	}
 
 	const ignoreFlag = os.ModeDir | os.ModeAppend | os.ModeExclusive | os.ModeTemporary |
-						os.ModeSymlink | os.ModeDevice | os.ModeNamedPipe | os.ModeSocket |
-						os.ModeSetuid | os.ModeSetgid | os.ModeCharDevice | os.ModeSticky
+		os.ModeSymlink | os.ModeDevice | os.ModeNamedPipe | os.ModeSocket |
+		os.ModeSetuid | os.ModeSetgid | os.ModeCharDevice | os.ModeSticky
 
 	for _, finfo := range list {
 		mode := finfo.Mode()
@@ -302,14 +303,14 @@ func (this gorep) mapfork(fpath string, chans *channelSet) {
 			continue
 		}
 		switch true {
-		case mode & os.ModeDir != 0:
+		case mode&os.ModeDir != 0:
 			fullpath := fpath + separator + fname
 			chans.dir <- fullpath
 			waitMaps.Add(1)
 			go this.mapfork(fullpath, chans)
-		case mode & os.ModeSymlink != 0:
+		case mode&os.ModeSymlink != 0:
 			chans.symlink <- fpath + separator + fname
-		case mode & ignoreFlag == 0:
+		case mode&ignoreFlag == 0:
 			chans.file <- fpath + separator + fname
 		default:
 			continue
@@ -377,7 +378,7 @@ func verifyBinary(buf []byte) bool {
 
 func (this gorep) grep(fpath string, out chan<- string) {
 	defer func() {
-		<- semFopenLimit
+		<-semFopenLimit
 		waitGreps.Done()
 	}()
 
@@ -396,7 +397,7 @@ func (this gorep) grep(fpath string, out chan<- string) {
 	}
 
 	mem, err := syscall.Mmap(int(file.Fd()), 0, int(fi.Size()),
-							syscall.PROT_READ, syscall.MAP_SHARED)
+		syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "grep mmap error: %v\n", err)
 		return
@@ -411,11 +412,11 @@ func (this gorep) grep(fpath string, out chan<- string) {
 	lineNumber := 0
 	var line []byte
 
-	for m := mem; len(m) > 0;  {
+	for m := mem; len(m) > 0; {
 		index := bytes.IndexRune(m, rune('\n'))
 		if index != -1 {
 			line = m[:index]
-			m = m[len(line)+1:]	/* +1 is to skip '\n' */
+			m = m[len(line)+1:] /* +1 is to skip '\n' */
 		} else {
 			line = m
 			m = m[len(line):]
@@ -439,4 +440,3 @@ func (this gorep) grep(fpath string, out chan<- string) {
 		}
 	}
 }
-
