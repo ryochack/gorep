@@ -34,10 +34,19 @@ type optionSet struct {
 	ignorecase bool
 }
 
+type searchScope struct {
+	dir bool
+	file bool
+	symlink bool
+	grep bool
+	binary bool
+	hidden bool
+}
+
 type gorep struct {
 	pattern *regexp.Regexp
 	ignorePattern *regexp.Regexp
-	opt optionSet
+	scope searchScope
 }
 
 var semPrint chan int
@@ -173,32 +182,60 @@ func (this gorep) report(chans *channelSet, isColor bool) {
 }
 
 func newGorep(pattern string, opt *optionSet) *gorep {
+	base := &gorep{
+		pattern: nil,
+		ignorePattern: nil,
+		scope: searchScope{
+			dir: true,
+			file: true,
+			symlink: true,
+			grep: false,
+			binary: false,
+			hidden: false,
+		},
+	}
+
+	// config regexp
 	if opt.ignorecase {
 		pattern = "(?i)" + pattern
 	}
-	compiledPattern, err := regexp.Compile(pattern)
+
+	var err error
+	base.pattern, err = regexp.Compile(pattern)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(-1)
 	}
-	var compiledIgnorePattern *regexp.Regexp
+
 	if len(opt.ignore) > 0 {
 		if opt.ignorecase {
 			opt.ignore = "(?i)" + opt.ignore
 		}
-		compiledIgnorePattern, err = regexp.Compile(opt.ignore)
+		base.ignorePattern, err = regexp.Compile(opt.ignore)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			os.Exit(-1)
 		}
-	} else {
-		compiledIgnorePattern = nil
 	}
-	return &gorep{
-		pattern: compiledPattern,
-		ignorePattern: compiledIgnorePattern,
-		opt: *opt,
+
+	// config search scope
+	if opt.g {
+		base.scope.grep = true
 	}
+	if opt.grep_only {
+		base.scope.dir = false
+		base.scope.file = false
+		base.scope.symlink = false
+		base.scope.grep = true
+	}
+	if opt.search_binary {
+		base.scope.binary = true
+	}
+	if opt.hidden {
+		base.scope.hidden = true
+	}
+
+	return base
 }
 
 func (this gorep) kick(fpath string) *channelSet {
@@ -260,7 +297,7 @@ func (this gorep) mapfork(fpath string, chans *channelSet) {
 	for _, finfo := range list {
 		mode := finfo.Mode()
 		fname := finfo.Name()
-		if !this.opt.hidden && verifyHidden(fname) {
+		if !this.scope.hidden && verifyHidden(fname) {
 			continue
 		}
 		if this.ignorePattern != nil && this.ignorePattern.MatchString(fname) {
@@ -292,7 +329,7 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 	// directory
 	go func(in <-chan string, out chan<- string) {
 		for msg := range in {
-			if !this.opt.grep_only {
+			if this.scope.dir {
 				filter(msg, out)
 			}
 		}
@@ -302,10 +339,10 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 	// file
 	go func(in <-chan string, out chan<- string, chLine chan<- string) {
 		for msg := range in {
-			if !this.opt.grep_only {
+			if this.scope.file {
 				filter(msg, out)
 			}
-			if this.opt.g || this.opt.grep_only {
+			if this.scope.grep {
 				waitGreps.Add(1)
 				go this.grep(msg, chLine)
 			}
@@ -318,7 +355,7 @@ func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 	// symlink
 	go func(in <-chan string, out chan<- string) {
 		for msg := range in {
-			if !this.opt.grep_only {
+			if this.scope.symlink {
 				filter(msg, out)
 			}
 		}
@@ -369,7 +406,7 @@ func (this gorep) grep(fpath string, out chan<- string) {
 	defer syscall.Munmap(mem)
 
 	isBinary := verifyBinary(mem)
-	if isBinary && !this.opt.search_binary {
+	if isBinary && !this.scope.binary {
 		return
 	}
 
