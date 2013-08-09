@@ -124,8 +124,6 @@ func main() {
 		fpath = strings.TrimRight(flag.Arg(1), separator)
 	}
 
-	fmt.Printf("pattern:%s (ignore:%s) path:%s -g:%v\n", pattern, opt.ignore, fpath, opt.g)
-
 	g := newGorep(pattern, &opt)
 	chans := g.kick(fpath)
 
