@@ -140,7 +140,7 @@ const (
 	NORM_DECO     = "\x1b[0m"
 )
 
-func (this gorep) report(chans *channelSet, isColor bool) {
+func (this *gorep) report(chans *channelSet, isColor bool) {
 	var markMatch string
 	var markDir string
 	var markFile string
@@ -257,7 +257,7 @@ func newGorep(pattern string, opt *optionSet) *gorep {
 	return base
 }
 
-func (this gorep) kick(fpath string) *channelSet {
+func (this *gorep) kick(fpath string) *channelSet {
 	chsMap := makeChannelSet()
 	chsReduce := makeChannelSet()
 
@@ -299,7 +299,7 @@ func verifyHidden(fpath string) bool {
 	return false
 }
 
-func (this gorep) mapsend(fpath string, chans *channelSet) {
+func (this *gorep) mapsend(fpath string, chans *channelSet) {
 	defer waitMaps.Done()
 
 	/* expand dir */
@@ -348,7 +348,7 @@ func (this gorep) mapsend(fpath string, chans *channelSet) {
 	}
 }
 
-func (this gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
+func (this *gorep) reduce(chsIn *channelSet, chsOut *channelSet) {
 	filter := func(in <-chan string, out chan<- string) {
 		for msg := range in {
 			if this.pattern.MatchString(path.Base(msg)) {
@@ -392,7 +392,7 @@ func verifyBinary(buf []byte) bool {
 	return false
 }
 
-func (this gorep) grep(fpath string, out chan<- grepInfo) {
+func (this *gorep) grep(fpath string, out chan<- grepInfo) {
 	defer func() {
 		<-semFopenLimit
 		waitGreps.Done()
