@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"code.google.com/p/go.crypto/ssh/terminal"
 	"flag"
@@ -425,22 +426,15 @@ func (this *gorep) grep(fpath string, out chan<- grepInfo) {
 		return
 	}
 
+	buffer  := bytes.NewBuffer(mem)
+	scanner := bufio.NewScanner(buffer)
+
+	scanner.Split(bufio.ScanLines)
 	lineNumber := 0
-	var line []byte
 
-	for m := mem; len(m) > 0; {
-		index := bytes.IndexRune(m, rune('\n'))
-		if index != -1 {
-			line = m[:index]
-			m = m[len(line)+1:] /* +1 is to skip '\n' */
-		} else {
-			line = m
-			m = m[len(line):]
-		}
-
+	for scanner.Scan() {
 		lineNumber++
-		strline := string(line)
-
+		strline := scanner.Text()
 		if this.pattern.MatchString(strline) {
 			if isBinary {
 				out <- grepInfo{fpath, 0, fmt.Sprintf("Binary file %s matches", fpath)}
